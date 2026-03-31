@@ -110,14 +110,36 @@ def alpaca_post(path, data):
 # ── YAHOO FINANCE — fuente de datos ───────────
 def get_bars_yahoo(yahoo_ticker, limit=60):
     try:
-        df = yf.Ticker(yahoo_ticker).history(period="2d", interval="5m")
-        if df is None or len(df) < 22:
+        import yfinance as yf
+        # Headers de navegador para evitar bloqueo en servidores cloud
+        ticker = yf.Ticker(yahoo_ticker)
+        ticker._download_ticker = yahoo_ticker
+        
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        })
+        
+        import yfinance as yf
+        yf.set_tz_cache_location("/tmp")
+        
+        df = yf.download(
+            yahoo_ticker,
+            period="2d",
+            interval="5m",
+            progress=False,
+            session=session
+        )
+        
+        if df is None or len(df) < 5:
             return None
         df = df.tail(limit).copy()
         df["c"] = df["Close"].astype(float)
         return df.reset_index()
     except Exception as e:
-        log("error", f"Yahoo {yahoo_ticker}: {str(e)[:50]}")
+        log("error", f"Yahoo {yahoo_ticker}: {str(e)[:60]}")
         return None
 
 def calc_ema(series, period):
