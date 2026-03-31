@@ -367,17 +367,3 @@ if __name__ == "__main__":
     threading.Thread(target=run_bot, daemon=True).start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-python@app.route("/api/test")
-def test():
-    import yfinance as yf
-    try:
-        df = yf.Ticker("BTC-USD").history(period="1d", interval="1m")
-        return jsonify({"ok": True, "filas": len(df), "ultimo": float(df["Close"].iloc[-1])})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
-```
-
-Luego abre en el navegador:
-```
-https://trading-bot-production-17c1.up.railway.app/
