@@ -7,13 +7,14 @@ API_SECRET = os.environ.get("API_SECRET", "")
 BASE_URL   = "https://paper-api.alpaca.markets"
 DATA_URL   = "https://data.alpaca.markets"
 
-STOP_LOSS   = 0.015
-TAKE_PROFIT = 0.030
-EMA_FAST    = 9
-EMA_SLOW    = 21
-RSI_PERIOD  = 14
-RSI_MAX     = 70
-INTERVALO   = 120
+CAPITAL_REAL = 500    # ← Cambia este número para ajustar cuánto usa el bot
+STOP_LOSS    = 0.015
+TAKE_PROFIT  = 0.030
+EMA_FAST     = 9
+EMA_SLOW     = 21
+RSI_PERIOD   = 14
+RSI_MAX      = 70
+INTERVALO    = 120
 
 ACTIVOS_CRYPTO = [
     "BTC/USD", "ETH/USD", "SOL/USD", "BNB/USD", "XRP/USD",
@@ -29,6 +30,9 @@ ACTIVOS_STOCKS = [
     "SLV",  "USO",  "SPY",  "QQQ",   "ARKK",
 ]
 
+TOTAL_ACTIVOS = len(ACTIVOS_CRYPTO) + len(ACTIVOS_STOCKS)
+POR_ACTIVO    = round(CAPITAL_REAL / TOTAL_ACTIVOS, 2)
+
 HEADERS = {
     "APCA-API-KEY-ID": API_KEY,
     "APCA-API-SECRET-KEY": API_SECRET
@@ -37,7 +41,9 @@ HEADERS = {
 estado = {
     "activos": {}, "señales": [], "operaciones": [],
     "capital": 0.0, "pnl": 0.0, "trades": 0,
-    "log": [], "ultimo_update": "—"
+    "log": [], "ultimo_update": "—",
+    "capital_real": CAPITAL_REAL,
+    "por_activo": POR_ACTIVO
 }
 
 def log(tipo, msg):
@@ -131,22 +137,22 @@ def analizar(symbol, es_crypto):
     }
 
 def run_bot():
-    log("info", f"🤖 Bot iniciado — {len(ACTIVOS_CRYPTO)+len(ACTIVOS_STOCKS)} activos")
+    log("info", f"🤖 Bot iniciado — {TOTAL_ACTIVOS} activos")
+    log("info", f"💰 Capital limitado: ${CAPITAL_REAL} | Por activo: ${POR_ACTIVO}")
 
     while True:
         try:
-            cuenta = alpaca_get("account")
-            equity   = round(float(cuenta.get("equity", 0)), 2)
-            cash     = round(float(cuenta.get("cash", 0)), 2)
-            estado["capital"] = equity
-            estado["pnl"]     = round(equity - 100000.0, 2)
+            cuenta  = alpaca_get("account")
+            equity  = round(float(cuenta.get("equity", 0)), 2)
+            estado["capital"]       = equity
+            estado["pnl"]           = round(equity - 100000.0, 2)
             estado["ultimo_update"] = datetime.now().strftime("%H:%M:%S")
 
-            log("info", f"💰 Capital: ${equity:,} | Cash: ${cash:,}")
+            log("info", f"💰 Capital total: ${equity:,} | Usando: ${CAPITAL_REAL}")
 
             señales_activas = []
 
-            # Analizar cryptos
+            # ── CRYPTO (24/7) ─────────────────────────
             for symbol in ACTIVOS_CRYPTO:
                 try:
                     datos = analizar(symbol, es_crypto=True)
@@ -156,19 +162,22 @@ def run_bot():
                     pos    = get_position(symbol)
                     precio = datos["precio"]
                     señal  = datos["señal"]
-                    qty    = round(cash / (len(ACTIVOS_CRYPTO)+len(ACTIVOS_STOCKS)) / precio, 6)
+                    qty    = round(POR_ACTIVO / precio, 6)
 
                     if señal == "COMPRAR" and pos is None and qty > 0:
                         try:
                             alpaca_post("orders", {
                                 "symbol": symbol, "qty": str(qty),
-                                "side": "buy", "type": "market", "time_in_force": "gtc"
+                                "side": "buy", "type": "market",
+                                "time_in_force": "gtc"
                             })
                             estado["trades"] += 1
-                            log("buy", f"COMPRA {symbol} @ ${precio:,}")
+                            log("buy", f"COMPRA {symbol} @ ${precio:,} | qty:{qty} | ${round(qty*precio,2)}")
                             estado["operaciones"].insert(0, {
                                 "time": datetime.now().strftime("%H:%M:%S"),
-                                "tipo": "COMPRA", "ticker": symbol, "precio": precio, "qty": qty
+                                "tipo": "COMPRA", "ticker": symbol,
+                                "precio": precio, "qty": qty,
+                                "total": round(qty * precio, 2)
                             })
                         except Exception as e:
                             log("warn", f"{symbol}: {str(e)[:50]}")
@@ -177,13 +186,16 @@ def run_bot():
                         try:
                             alpaca_post("orders", {
                                 "symbol": symbol, "qty": pos.get("qty"),
-                                "side": "sell", "type": "market", "time_in_force": "gtc"
+                                "side": "sell", "type": "market",
+                                "time_in_force": "gtc"
                             })
                             estado["trades"] += 1
                             log("sell", f"VENTA {symbol} @ ${precio:,}")
                             estado["operaciones"].insert(0, {
                                 "time": datetime.now().strftime("%H:%M:%S"),
-                                "tipo": "VENTA", "ticker": symbol, "precio": precio, "qty": pos.get("qty")
+                                "tipo": "VENTA", "ticker": symbol,
+                                "precio": precio, "qty": pos.get("qty"),
+                                "total": round(float(pos.get("qty", 0)) * precio, 2)
                             })
                         except Exception as e:
                             log("warn", f"{symbol}: {str(e)[:50]}")
@@ -194,7 +206,7 @@ def run_bot():
                 except Exception as e:
                     log("error", f"{symbol}: {str(e)[:50]}")
 
-            # Analizar acciones (solo si el mercado está abierto)
+            # ── ACCIONES (solo mercado abierto) ───────
             try:
                 clock = alpaca_get("clock")
                 mercado_abierto = clock.get("is_open", False)
@@ -214,34 +226,40 @@ def run_bot():
                     pos    = get_position(symbol)
                     precio = datos["precio"]
                     señal  = datos["señal"]
-                    qty    = max(1, int(cash / (len(ACTIVOS_CRYPTO)+len(ACTIVOS_STOCKS)) / precio))
+                    qty    = max(1, int(POR_ACTIVO / precio))
 
                     if señal == "COMPRAR" and pos is None and qty >= 1:
                         try:
                             alpaca_post("orders", {
                                 "symbol": symbol, "qty": str(qty),
-                                "side": "buy", "type": "market", "time_in_force": "day"
+                                "side": "buy", "type": "market",
+                                "time_in_force": "day"
                             })
                             estado["trades"] += 1
-                            log("buy", f"COMPRA {symbol} @ ${precio:,}")
+                            log("buy", f"COMPRA {symbol} @ ${precio} | qty:{qty} | ${round(qty*precio,2)}")
                             estado["operaciones"].insert(0, {
                                 "time": datetime.now().strftime("%H:%M:%S"),
-                                "tipo": "COMPRA", "ticker": symbol, "precio": precio, "qty": qty
+                                "tipo": "COMPRA", "ticker": symbol,
+                                "precio": precio, "qty": qty,
+                                "total": round(qty * precio, 2)
                             })
                         except Exception as e:
                             log("warn", f"{symbol}: {str(e)[:50]}")
 
-                    elif señal == "VENDER" and pos is not None and mercado_abierto:
+                    elif señal == "VENDER" and pos is not None:
                         try:
                             alpaca_post("orders", {
                                 "symbol": symbol, "qty": pos.get("qty"),
-                                "side": "sell", "type": "market", "time_in_force": "day"
+                                "side": "sell", "type": "market",
+                                "time_in_force": "day"
                             })
                             estado["trades"] += 1
-                            log("sell", f"VENTA {symbol} @ ${precio:,}")
+                            log("sell", f"VENTA {symbol} @ ${precio}")
                             estado["operaciones"].insert(0, {
                                 "time": datetime.now().strftime("%H:%M:%S"),
-                                "tipo": "VENTA", "ticker": symbol, "precio": precio, "qty": pos.get("qty")
+                                "tipo": "VENTA", "ticker": symbol,
+                                "precio": precio, "qty": pos.get("qty"),
+                                "total": round(float(pos.get("qty", 0)) * precio, 2)
                             })
                         except Exception as e:
                             log("warn", f"{symbol}: {str(e)[:50]}")
@@ -281,10 +299,11 @@ DASHBOARD = """
   .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
   .m{background:var(--s);border:1px solid var(--b);padding:10px}
   .ml{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--d);margin-bottom:4px}
-  .mv{font-family:'Syne',sans-serif;font-size:20px;font-weight:800}
+  .mv{font-family:'Syne',sans-serif;font-size:18px;font-weight:800}
   .mv.g{color:var(--g)} .mv.r{color:var(--r)} .mv.b{color:var(--bl)} .mv.y{color:var(--y)}
+  .ms{font-size:8px;color:var(--d);margin-top:2px}
   .tabs{display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--b)}
-  .tab{padding:8px 14px;font-size:10px;cursor:pointer;color:var(--d);letter-spacing:.08em;border-bottom:2px solid transparent;transition:all .2s}
+  .tab{padding:8px 12px;font-size:10px;cursor:pointer;color:var(--d);letter-spacing:.06em;border-bottom:2px solid transparent;transition:all .2s}
   .tab.active{color:var(--g);border-bottom-color:var(--g)}
   .panel{display:none} .panel.active{display:block}
   .table{width:100%;border-collapse:collapse;font-size:10px}
@@ -308,6 +327,7 @@ DASHBOARD = """
   .lbuy{color:var(--g)} .lsell{color:var(--r)} .linfo{color:var(--t)} .lwait{color:var(--y)} .lerror{color:var(--r)}
   .search{width:100%;background:var(--s);border:1px solid var(--b);color:var(--t);padding:8px 12px;font-family:'Space Mono',monospace;font-size:11px;margin-bottom:10px;outline:none}
   .search:focus{border-color:var(--g)}
+  .info-bar{background:var(--s);border:1px solid var(--b);padding:8px 12px;margin-bottom:12px;font-size:10px;display:flex;justify-content:space-between}
   .footer{text-align:center;font-size:9px;color:var(--d);margin-top:10px}
 </style>
 </head>
@@ -316,36 +336,53 @@ DASHBOARD = """
   <div><h1>TRADING BOT PRO</h1><div style="font-size:9px;color:var(--d)" id="upd">—</div></div>
   <div class="pill"><div class="dot"></div>PAPER · 40 ACTIVOS</div>
 </div>
-<div class="metrics">
-  <div class="m"><div class="ml">Capital</div><div class="mv g" id="cap">$—</div></div>
-  <div class="m"><div class="ml">P&L</div><div class="mv" id="pnl" style="color:var(--g)">$—</div></div>
-  <div class="m"><div class="ml">Señales</div><div class="mv y" id="nsig">0</div></div>
-  <div class="m"><div class="ml">Trades</div><div class="mv b" id="ntrades">0</div></div>
+
+<div class="info-bar">
+  <span>💰 Capital limitado: <span id="cap-real" style="color:var(--g)">$—</span></span>
+  <span>📊 Por operación: <span id="por-op" style="color:var(--y)">$—</span></span>
 </div>
+
+<div class="metrics">
+  <div class="m"><div class="ml">Capital Total</div><div class="mv g" id="cap">$—</div><div class="ms">Cuenta Alpaca</div></div>
+  <div class="m"><div class="ml">P&L</div><div class="mv" id="pnl" style="color:var(--g)">$—</div><div class="ms">vs $100k inicial</div></div>
+  <div class="m"><div class="ml">Señales</div><div class="mv y" id="nsig">0</div><div class="ms">activas ahora</div></div>
+  <div class="m"><div class="ml">Trades</div><div class="mv b" id="ntrades">0</div><div class="ms">ejecutados</div></div>
+</div>
+
 <div class="tabs">
   <div class="tab active" onclick="showTab('senales')">🟢 SEÑALES</div>
   <div class="tab" onclick="showTab('mercado')">📊 MERCADO</div>
   <div class="tab" onclick="showTab('ops')">📋 OPERACIONES</div>
   <div class="tab" onclick="showTab('logp')">🔍 LOG</div>
 </div>
+
 <div id="senales" class="panel active">
   <div id="sig-grid" class="signals-grid"></div>
-  <div id="no-sig" style="text-align:center;padding:30px;color:var(--d);font-size:11px">⏳ Esperando señales...</div>
+  <div id="no-sig" style="text-align:center;padding:30px;color:var(--d);font-size:11px">⏳ Esperando señales de compra...</div>
 </div>
+
 <div id="mercado" class="panel">
   <input class="search" id="search" placeholder="Buscar activo..." oninput="filtrar()">
-  <table class="table"><thead><tr><th>Activo</th><th>Precio</th><th>EMA9</th><th>RSI</th><th>Señal</th></tr></thead>
-  <tbody id="tbody"></tbody></table>
+  <table class="table">
+    <thead><tr><th>Activo</th><th>Precio</th><th>EMA9</th><th>RSI</th><th>Señal</th></tr></thead>
+    <tbody id="tbody"></tbody>
+  </table>
 </div>
+
 <div id="ops" class="panel">
-  <table class="table"><thead><tr><th>Hora</th><th>Tipo</th><th>Activo</th><th>Precio</th><th>Qty</th></tr></thead>
-  <tbody id="ops-body"></tbody></table>
+  <table class="table">
+    <thead><tr><th>Hora</th><th>Tipo</th><th>Activo</th><th>Precio</th><th>Total $</th></tr></thead>
+    <tbody id="ops-body"></tbody>
+  </table>
   <div id="no-ops" style="text-align:center;padding:30px;color:var(--d);font-size:11px">Sin operaciones aún</div>
 </div>
+
 <div id="logp" class="panel">
   <div class="log-box"><div id="log"></div></div>
 </div>
-<div class="footer">↻ Actualiza cada 10s · Paper Trading · 24/7</div>
+
+<div class="footer">↻ Actualiza cada 10s · Paper Trading · 24/7 en Railway</div>
+
 <script>
 let todosActivos={};
 function showTab(id){
@@ -371,6 +408,8 @@ async function update(){
   try{
     const d=await(await fetch('/api/estado')).json();
     document.getElementById('cap').textContent='$'+Number(d.capital).toLocaleString();
+    document.getElementById('cap-real').textContent='$'+Number(d.capital_real).toLocaleString();
+    document.getElementById('por-op').textContent='$'+Number(d.por_activo).toLocaleString();
     const pnl=d.pnl,pe=document.getElementById('pnl');
     pe.textContent=(pnl>=0?'+':'')+' $'+Math.abs(pnl).toLocaleString();
     pe.style.color=pnl>=0?'var(--g)':'var(--r)';
@@ -399,7 +438,7 @@ async function update(){
           <td><span class="badge ${o.tipo==='COMPRA'?'buy':'sell'}">${o.tipo}</span></td>
           <td style="font-weight:700">${o.ticker}</td>
           <td style="color:var(--bl)">$${Number(o.precio).toLocaleString()}</td>
-          <td style="color:var(--d)">${o.qty}</td>
+          <td style="color:var(--g)">$${o.total}</td>
         </tr>`).join('');
     }else{no.style.display='block';}
     document.getElementById('log').innerHTML=d.log.map(e=>`
