@@ -463,15 +463,39 @@ def api_estado():
 
 @app.route("/api/test")
 def test():
+    resultados = {}
+    # Test crypto
     try:
         r = requests.get(f"{DATA_URL}/v1beta3/crypto/us/bars",
             headers=HEADERS,
             params={"symbols": "BTC/USD", "timeframe": "5Min", "limit": 3},
             timeout=10)
         bars = r.json().get("bars", {}).get("BTC/USD", [])
-        return jsonify({"ok": True, "bars": len(bars), "ultimo": bars[-1]["c"] if bars else None})
+        resultados["crypto"] = {"ok": True, "bars": len(bars)}
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        resultados["crypto"] = {"ok": False, "error": str(e)}
+
+    # Test acciones
+    try:
+        r = requests.get(f"{DATA_URL}/v2/stocks/AAPL/bars",
+            headers=HEADERS,
+            params={"timeframe": "5Min", "limit": 3, "feed": "iex"},
+            timeout=10)
+        resultados["stocks_iex"] = {"ok": True, "status": r.status_code, "data": r.json()}
+    except Exception as e:
+        resultados["stocks_iex"] = {"ok": False, "error": str(e)}
+
+    # Test sin feed
+    try:
+        r = requests.get(f"{DATA_URL}/v2/stocks/AAPL/bars",
+            headers=HEADERS,
+            params={"timeframe": "5Min", "limit": 3},
+            timeout=10)
+        resultados["stocks_sin_feed"] = {"ok": True, "status": r.status_code, "data": r.json()}
+    except Exception as e:
+        resultados["stocks_sin_feed"] = {"ok": False, "error": str(e)}
+
+    return jsonify(resultados)
 
 # Arrancar bot al importar (necesario para gunicorn)
 bot_thread = threading.Thread(target=run_bot, daemon=True)
