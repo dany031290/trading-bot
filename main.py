@@ -7,7 +7,7 @@ API_KEY    = os.environ.get("API_KEY", "")
 API_SECRET = os.environ.get("API_SECRET", "")
 BASE_URL   = "https://paper-api.alpaca.markets"
 
-CAPITAL     = 22.0
+CAPITAL     = 200.0
 STOP_LOSS   = 0.015
 TAKE_PROFIT = 0.030
 EMA_FAST    = 9
