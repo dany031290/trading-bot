@@ -8,8 +8,8 @@ logging.getLogger("werkzeug").setLevel(logging.ERROR)
 # ─────────────────────────────────────────────
 # CONFIGURACION
 # ─────────────────────────────────────────────
-ALPACA_KEY    = os.environ.get("API_KEY", "")
-ALPACA_SECRET = os.environ.get("API_SECRET", "")
+ALPACA_KEY    = os.environ.get("ALPACA_KEY", "")
+ALPACA_SECRET = os.environ.get("ALPACA_SECRET", "")
 BASE_URL      = "https://paper-api.alpaca.markets"
 
 CAPITAL_POR_OPERACION = 55
