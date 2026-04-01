@@ -5,6 +5,9 @@ import yfinance as yf
 import logging
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
+# ─────────────────────────────────────────────
+# CONFIGURACION
+# ─────────────────────────────────────────────
 ALPACA_KEY    = os.environ.get("API_KEY", "")
 ALPACA_SECRET = os.environ.get("API_SECRET", "")
 BASE_URL      = "https://paper-api.alpaca.markets"
@@ -171,7 +174,7 @@ def comprar(datos):
     total       = round(qty * precio, 2)
     es_fraccion = not es_crypto and qty < 1.0
 
-    print(f"\n  {'─'*70}", flush=True)
+    print(f"\n  {'─'*60}", flush=True)
     log("buy", f"COMPRANDO {qty}x {ticker}")
     log("buy", f"Precio:      ${precio:,}")
     log("buy", f"Total:       ${total}")
@@ -179,7 +182,7 @@ def comprar(datos):
     log("buy", f"Take-Profit: ${tp} (+{TAKE_PROFIT*100}%)")
     if es_fraccion:
         log("buy", "Orden simple (fraccion) — SL/TP gestionado por bot")
-    print(f"  {'─'*70}\n", flush=True)
+    print(f"  {'─'*60}\n", flush=True)
 
     try:
         if es_crypto or es_fraccion:
@@ -219,11 +222,11 @@ def vender(datos, pos):
     es_crypto = "-USD" in ticker
     tif       = "gtc" if es_crypto else "day"
 
-    print(f"\n  {'─'*70}", flush=True)
+    print(f"\n  {'─'*60}", flush=True)
     log("sell", f"VENDIENDO {qty}x {ticker}")
     log("sell", f"Precio:  ${precio:,}")
     log("sell", f"P&L:     ${pl}")
-    print(f"  {'─'*70}\n", flush=True)
+    print(f"  {'─'*60}\n", flush=True)
 
     try:
         resp = alpaca_post("orders", {
@@ -305,7 +308,7 @@ DASHBOARD = """<!DOCTYPE html>
   <div class="tab" onclick="showTab('logp')">🔍 LOG</div>
 </div>
 <div id="mercado" class="panel active">
-  <input class="search" id="search" placeholder="Buscar activo o nombre..." oninput="filtrar()">
+  <input class="search" id="search" placeholder="Buscar..." oninput="filtrar()">
   <table class="table">
     <thead><tr><th>Activo</th><th>Precio</th><th>EMA9 vs EMA21</th><th>RSI</th><th>Señal</th></tr></thead>
     <tbody id="tbody"></tbody>
@@ -321,7 +324,7 @@ DASHBOARD = """<!DOCTYPE html>
 <div id="logp" class="panel">
   <div class="log-box"><div id="log"></div></div>
 </div>
-<div class="footer">Actualiza cada 10s · Paper Trading · Render 24/7</div>
+<div class="footer">Actualiza cada 10s · Paper Trading · 24/7</div>
 <script>
 let todos={};
 function showTab(id){
@@ -331,7 +334,7 @@ function showTab(id){
 }
 function filtrar(){
   const q=document.getElementById('search').value.toLowerCase();
-  render(Object.values(todos).filter(a=>a.ticker.toLowerCase().includes(q)||(a.nombre||'').toLowerCase().includes(q)));
+  render(Object.values(todos).filter(a=>a.ticker.toLowerCase().includes(q)||a.nombre.toLowerCase().includes(q)));
 }
 function render(activos){
   document.getElementById('tbody').innerHTML=activos.map(a=>{
@@ -339,32 +342,23 @@ function render(activos){
     const col=diff>0.05?'var(--g)':diff<-0.05?'var(--r)':'var(--y)';
     const bar=Math.min(Math.abs(diff)*20,50);
     const str=(diff>=0?'+':'')+diff+'%';
-    const arrow=diff>0.05?'▲':diff<-0.05?'▼':'▶';
-    const posHtml=a.en_posicion
-      ?'<div style="font-size:8px;color:'+(a.pos_pl>=0?'var(--g)':'var(--r)')+';margin-top:3px">● '+a.pos_qty+' uds &nbsp;|&nbsp; P&L '+(a.pos_pl>=0?'+':'')+'$'+a.pos_pl+'</div>'
-      :'';
-    const señalIcon=a.señal==='COMPRAR'?'🟢':a.señal==='VENDER'?'🔴':'⚪';
+    const icon=diff>0.05?'▲':diff<-0.05?'▼':'▶';
+    const pos=a.en_posicion?'<div style="font-size:8px;color:'+(a.pos_pl>=0?'var(--g)':'var(--r)')+';margin-top:2px">● '+a.pos_qty+' uds | P&L '+(a.pos_pl>=0?'+':'')+'$'+a.pos_pl+'</div>':'';
     return '<tr style="'+(a.en_posicion?'background:rgba(0,255,157,0.04)':'')+'">'
       +'<td>'
-        +'<div style="display:flex;align-items:center;gap:8px">'
-          +'<span style="font-size:18px;line-height:1">'+(a.icono||'📊')+'</span>'
+        +'<div style="display:flex;align-items:center;gap:6px">'
+          +'<span style="font-size:16px">'+(a.icono||'📊')+'</span>'
           +'<div>'
-            +'<div style="font-weight:700;font-size:11px">'+a.ticker+'</div>'
-            +'<div style="font-size:8px;color:var(--d);margin-top:1px">'+(a.nombre||'')+'</div>'
+            +'<div style="font-weight:700;font-size:10px">'+a.ticker+'</div>'
+            +'<div style="font-size:8px;color:var(--d)">'+(a.nombre||'')+'</div>'
           +'</div>'
         +'</div>'
-        +posHtml
+        +pos
       +'</td>'
-      +'<td style="color:var(--bl);font-size:11px">$'+Number(a.precio).toLocaleString()+'</td>'
-      +'<td>'
-        +'<span style="color:'+col+';font-size:10px">'+arrow+' '+str+'</span>'
-        +'<div class="bar" style="width:'+bar+'px;background:'+col+'"></div>'
-      +'</td>'
-      +'<td style="color:'+(a.rsi>70?'var(--r)':a.rsi<30?'var(--g)':'var(--y)')+';font-size:11px">'+a.rsi+'</td>'
-      +'<td>'
-        +'<span style="font-size:12px">'+señalIcon+'</span> '
-        +'<span class="badge '+(a.señal==='COMPRAR'?'buy':a.señal==='VENDER'?'sell':'wait')+'">'+a.señal+'</span>'
-      +'</td>'
+      +'<td style="color:var(--bl)">$'+Number(a.precio).toLocaleString()+'</td>'
+      +'<td><span style="color:'+col+'">'+icon+' '+str+'</span><div class="bar" style="width:'+bar+'px;background:'+col+'"></div></td>'
+      +'<td style="color:'+(a.rsi>70?'var(--r)':a.rsi<30?'var(--g)':'var(--y)')+'">'+a.rsi+'</td>'
+      +'<td><span class="badge '+(a.señal==='COMPRAR'?'buy':a.señal==='VENDER'?'sell':'wait')+'">'+a.señal+'</span></td>'
       +'</tr>';
   }).join('');
 }
@@ -413,8 +407,9 @@ def api_estado():
 
 def run_bot():
     print("\n" + "="*75, flush=True)
-    print(f"  TRADING BOT — {len(ACTIVOS)} activos | ${CAPITAL_POR_OPERACION}/op | SL:{STOP_LOSS*100}% TP:{TAKE_PROFIT*100}%", flush=True)
-    print("="*75, flush=True)
+    print("  TRADING BOT - PAPER TRADING", flush=True)
+    print(f"  Activos: {len(ACTIVOS)} | Capital/op: ${CAPITAL_POR_OPERACION} | SL:{STOP_LOSS*100}% TP:{TAKE_PROFIT*100}%", flush=True)
+    print("="*75 + "\n", flush=True)
 
     try:
         orders = alpaca_get("orders?status=filled&limit=20")
@@ -428,7 +423,7 @@ def run_bot():
                     "qty": o.get("filled_qty", "0"),
                     "total": round(float(o.get("filled_avg_price", 0)) * float(o.get("filled_qty", 0)), 2)
                 })
-        log("info", f"Cargadas {len(orders)} operaciones previas")
+        log("info", f"Cargadas {len(orders)} operaciones previas de Alpaca")
     except Exception as e:
         log("warn", f"Operaciones no cargadas: {str(e)[:50]}")
 
@@ -436,10 +431,10 @@ def run_bot():
     while True:
         ciclo += 1
         try:
-            cuenta = alpaca_get("account")
-            equity = float(cuenta.get("equity", 0))
-            cash   = float(cuenta.get("cash", 0))
-            pnl    = round(equity - 100000, 2)
+            cuenta  = alpaca_get("account")
+            equity  = float(cuenta.get("equity", 0))
+            cash    = float(cuenta.get("cash", 0))
+            pnl     = round(equity - 100000, 2)
             estado.update({"capital": equity, "cash": cash, "pnl": pnl, "ultimo_update": ts()})
 
             clock = alpaca_get("clock")
@@ -449,14 +444,14 @@ def run_bot():
             print(f"\n{'='*75}", flush=True)
             print(f"  CICLO #{ciclo} — {ts()} | Capital: ${equity:,.2f} | P&L: {'+' if pnl>=0 else ''}${pnl:,.2f} | Mercado: {mercado_str}", flush=True)
             print(f"  {'─'*72}", flush=True)
-            print(f"  {'':3} {'NOMBRE':<22} {'TICKER':<8} {'PRECIO':>11} | {'EMA9vsEMA21':>12} | {'RSI':>5} | SEÑAL    POSICION", flush=True)
+            print(f"  {'':2} {'NOMBRE':<20} {'TICKER':<8} {'PRECIO':>11} | {'EMA9vsEMA21':>12} | {'RSI':>5} | {'SEÑAL':<8} POSICION", flush=True)
             print(f"  {'─'*72}", flush=True)
 
             señales = []
             for ticker in ACTIVOS:
                 datos = analizar(ticker)
                 if datos is None:
-                    print(f"  ❌ {ticker:<8} sin datos", flush=True)
+                    print(f"  ❌ {ticker}: sin datos", flush=True)
                     continue
 
                 estado["activos"][ticker] = datos
@@ -467,24 +462,24 @@ def run_bot():
                 puede_operar = es_crypto or estado["mercado_abierto"]
 
                 if pos:
-                    pl_val = round(float(pos.get("unrealized_pl", 0)), 2)
                     estado["activos"][ticker].update({
                         "en_posicion": True,
-                        "pos_pl":  pl_val,
+                        "pos_pl":  round(float(pos.get("unrealized_pl", 0)), 2),
                         "pos_qty": pos.get("qty", "0")
                     })
+                    pl_val = round(float(pos.get("unrealized_pl", 0)), 2)
                     pos_str = f"[POS P&L:{'+' if pl_val>=0 else ''}${pl_val}]"
                 else:
                     estado["activos"][ticker].update({"en_posicion": False, "pos_pl": 0, "pos_qty": "0"})
                     pos_str = "[SIN POSICION]"
 
-                info      = ACTIVOS_INFO.get(ticker, ("📊", ticker))
-                icono     = info[0]
-                nombre    = info[1]
-                diff_str  = f"{'+' if diff>=0 else ''}{diff:>7}%"
-                señal_ico = "🟢" if señal == "COMPRAR" else "🔴" if señal == "VENDER" else "⚪"
+                info   = ACTIVOS_INFO.get(ticker, ("📊", ticker))
+                icono  = info[0]
+                nombre = info[1]
+                diff_str = f"{'+' if diff>=0 else ''}{diff:>7}%"
+                señal_color = "🟢" if señal == "COMPRAR" else "🔴" if señal == "VENDER" else "⚪"
 
-                print(f"  {icono} {nombre:<22} {ticker:<8} ${datos['precio']:>10,.2f} | {diff_str:>12} | {datos['rsi']:>5} | {señal_ico}{señal:<7} {pos_str}", flush=True)
+                print(f"  {icono} {nombre:<20} {ticker:<8} ${datos['precio']:>10,.2f} | {diff_str:>12} | {datos['rsi']:>5} | {señal_color}{señal:<7} {pos_str}", flush=True)
 
                 if señal == "COMPRAR" and pos is None and puede_operar:
                     comprar(datos)
@@ -497,13 +492,14 @@ def run_bot():
                             open_orders = alpaca_get(f"orders?status=open&symbols={ACTIVOS[ticker]}")
                             for o in open_orders:
                                 requests.delete(f"{BASE_URL}/v2/orders/{o['id']}", headers=HEADERS, timeout=10)
+                                log("info", f"Bracket cancelado: {o['id'][:8]}")
                             time.sleep(0.5)
                             vender(datos, pos)
                         except Exception as e:
                             log("error", f"Error venta {ticker}: {str(e)[:60]}")
 
             estado["señales"] = señales
-            print(f"\n  Esperando {INTERVALO}s...", flush=True)
+            print(f"\n  Esperando {INTERVALO}s hasta el proximo ciclo...", flush=True)
 
         except Exception as e:
             log("error", f"Error general: {str(e)[:80]}")
