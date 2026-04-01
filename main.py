@@ -94,17 +94,25 @@ def alpaca_post(path, data):
 def get_bars(ticker, limit=60):
     for intento in range(3):
         try:
-            df = yf.download(ticker, period="2d", interval="1m", progress=False, auto_adjust=True)
+            import yfinance as yf
+            session = requests.Session()
+            session.headers.update({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Accept-Encoding": "gzip, deflate",
+                "Connection": "keep-alive",
+            })
+            ticker_obj = yf.Ticker(ticker, session=session)
+            df = ticker_obj.history(period="2d", interval="1m")
             if df is None or len(df) < 22:
                 return None
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
             df = df.tail(limit).copy()
             df["c"] = df["Close"].astype(float)
-            return df
+            return df.reset_index()
         except Exception as e:
             if intento < 2:
-                time.sleep(2)
+                time.sleep(3)
                 continue
             log("error", f"{ticker}: {str(e)[:60]}")
             return None
