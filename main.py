@@ -95,29 +95,38 @@ def alpaca_post(path, data):
     return r.json()
 
 def get_bars(ticker, limit=60):
-    for intento in range(3):
-        try:
-            session = requests.Session()
-            session.headers.update({
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.5",
-                "Accept-Encoding": "gzip, deflate",
-                "Connection": "keep-alive",
-            })
-            ticker_obj = yf.Ticker(ticker, session=session)
-            df = ticker_obj.history(period="2d", interval="1m")
-            if df is None or len(df) < 22:
-                return None
-            df = df.tail(limit).copy()
-            df["c"] = df["Close"].astype(float)
-            return df.reset_index()
-        except Exception as e:
-            if intento < 2:
-                time.sleep(3)
-                continue
-            log("error", f"{ticker}: {str(e)[:60]}")
+    try:
+        POLYGON_KEY = os.environ.get("POLYGON_KEY", "")
+        es_crypto = "-USD" in ticker
+
+        if es_crypto:
+            # Crypto: BTC-USD → X:BTCUSD
+            sym = "X:" + ticker.replace("-", "")
+        else:
+            sym = ticker
+
+        url = f"https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/minute"
+        params = {
+            "adjusted": "true",
+            "sort": "asc",
+            "limit": limit,
+            "apiKey": POLYGON_KEY
+        }
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        results = data.get("results", [])
+        if not results or len(results) < 22:
             return None
+
+        df = pd.DataFrame(results)
+        df["c"] = df["c"].astype(float)
+        return df
+
+    except Exception as e:
+        log("error", f"{ticker}: {str(e)[:60]}")
+        return None
 
 def calc_ema(series, period):
     k = 2 / (period + 1)
