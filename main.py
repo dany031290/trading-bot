@@ -41,23 +41,23 @@ ACTIVOS = {
 
 ACTIVOS_INFO = {
     "BTC-USD": ("🪙", "Bitcoin"),
-    "GLD":     ("🥇", "Oro"),
-    "SLV":     ("🥇", "Plata"),
-    "GDX":     ("🥇", "Mineras oro"),
-    "NEM":     ("🥇", "Newmont"),
-    "LMT":     ("🛡️", "Lockheed"),
-    "RTX":     ("🛡️", "Raytheon"),
-    "NOC":     ("🛡️", "Northrop"),
-    "GD":      ("🛡️", "Gen. Dynamics"),
-    "XOM":     ("⚡", "Exxon"),
-    "CVX":     ("⚡", "Chevron"),
+    "GLD":     ("🥇", "Oro (ETF)"),
+    "SLV":     ("🥇", "Plata (ETF)"),
+    "GDX":     ("🥇", "Mineras de Oro"),
+    "NEM":     ("🥇", "Newmont Corp"),
+    "LMT":     ("🛡️", "Lockheed Martin"),
+    "RTX":     ("🛡️", "Raytheon Tech"),
+    "NOC":     ("🛡️", "Northrop Grumman"),
+    "GD":      ("🛡️", "General Dynamics"),
+    "XOM":     ("⚡", "Exxon Mobil"),
+    "CVX":     ("⚡", "Chevron Corp"),
     "USO":     ("⚡", "ETF Petroleo"),
     "XLE":     ("⚡", "ETF Energia"),
-    "JNJ":     ("💊", "Johnson&Johnson"),
-    "PFE":     ("💊", "Pfizer"),
-    "SPY":     ("🏦", "S&P500"),
+    "JNJ":     ("💊", "Johnson & Johnson"),
+    "PFE":     ("💊", "Pfizer Inc"),
+    "SPY":     ("🏦", "S&P 500 ETF"),
     "IEF":     ("🏦", "Bonos Tesoro"),
-    "TLT":     ("🏦", "Bonos Largo"),
+    "TLT":     ("🏦", "Bonos Largo Plazo"),
 }
 
 HEADERS = {
@@ -94,7 +94,6 @@ def alpaca_post(path, data):
 def get_bars(ticker, limit=60):
     for intento in range(3):
         try:
-            import yfinance as yf
             session = requests.Session()
             session.headers.update({
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -172,7 +171,15 @@ def comprar(datos):
     total       = round(qty * precio, 2)
     es_fraccion = not es_crypto and qty < 1.0
 
-    log("buy", f"COMPRANDO {qty}x {ticker} @ ${precio:,} | Total:${total} | SL:${stop} TP:${tp}")
+    print(f"\n  {'─'*70}", flush=True)
+    log("buy", f"COMPRANDO {qty}x {ticker}")
+    log("buy", f"Precio:      ${precio:,}")
+    log("buy", f"Total:       ${total}")
+    log("buy", f"Stop-Loss:   ${stop} (-{STOP_LOSS*100}%)")
+    log("buy", f"Take-Profit: ${tp} (+{TAKE_PROFIT*100}%)")
+    if es_fraccion:
+        log("buy", "Orden simple (fraccion) — SL/TP gestionado por bot")
+    print(f"  {'─'*70}\n", flush=True)
 
     try:
         if es_crypto or es_fraccion:
@@ -212,7 +219,11 @@ def vender(datos, pos):
     es_crypto = "-USD" in ticker
     tif       = "gtc" if es_crypto else "day"
 
-    log("sell", f"VENDIENDO {qty}x {ticker} @ ${precio:,} | P&L:${pl}")
+    print(f"\n  {'─'*70}", flush=True)
+    log("sell", f"VENDIENDO {qty}x {ticker}")
+    log("sell", f"Precio:  ${precio:,}")
+    log("sell", f"P&L:     ${pl}")
+    print(f"  {'─'*70}\n", flush=True)
 
     try:
         resp = alpaca_post("orders", {
@@ -294,7 +305,7 @@ DASHBOARD = """<!DOCTYPE html>
   <div class="tab" onclick="showTab('logp')">🔍 LOG</div>
 </div>
 <div id="mercado" class="panel active">
-  <input class="search" id="search" placeholder="Buscar..." oninput="filtrar()">
+  <input class="search" id="search" placeholder="Buscar activo o nombre..." oninput="filtrar()">
   <table class="table">
     <thead><tr><th>Activo</th><th>Precio</th><th>EMA9 vs EMA21</th><th>RSI</th><th>Señal</th></tr></thead>
     <tbody id="tbody"></tbody>
@@ -320,7 +331,7 @@ function showTab(id){
 }
 function filtrar(){
   const q=document.getElementById('search').value.toLowerCase();
-  render(Object.values(todos).filter(a=>a.ticker.toLowerCase().includes(q)));
+  render(Object.values(todos).filter(a=>a.ticker.toLowerCase().includes(q)||(a.nombre||'').toLowerCase().includes(q)));
 }
 function render(activos){
   document.getElementById('tbody').innerHTML=activos.map(a=>{
@@ -328,15 +339,33 @@ function render(activos){
     const col=diff>0.05?'var(--g)':diff<-0.05?'var(--r)':'var(--y)';
     const bar=Math.min(Math.abs(diff)*20,50);
     const str=(diff>=0?'+':'')+diff+'%';
-    const icon=diff>0.05?'▲':diff<-0.05?'▼':'▶';
-    const pos=a.en_posicion?'<div style="font-size:8px;color:'+(a.pos_pl>=0?'var(--g)':'var(--r)')+';margin-top:2px">● '+a.pos_qty+' | P&L:'+(a.pos_pl>=0?'+':'')+'$'+a.pos_pl+'</div>':'';
+    const arrow=diff>0.05?'▲':diff<-0.05?'▼':'▶';
+    const posHtml=a.en_posicion
+      ?'<div style="font-size:8px;color:'+(a.pos_pl>=0?'var(--g)':'var(--r)')+';margin-top:3px">● '+a.pos_qty+' uds &nbsp;|&nbsp; P&L '+(a.pos_pl>=0?'+':'')+'$'+a.pos_pl+'</div>'
+      :'';
+    const señalIcon=a.señal==='COMPRAR'?'🟢':a.señal==='VENDER'?'🔴':'⚪';
     return '<tr style="'+(a.en_posicion?'background:rgba(0,255,157,0.04)':'')+'">'
-      +'<td><span>'+(a.icono||'📊')+'</span> <b>'+a.ticker+'</b>'
-      +'<div style="font-size:8px;color:var(--d)">'+(a.nombre||'')+'</div>'+pos+'</td>'
-      +'<td style="color:var(--bl)">$'+Number(a.precio).toLocaleString()+'</td>'
-      +'<td><span style="color:'+col+'">'+icon+' '+str+'</span><div class="bar" style="width:'+bar+'px;background:'+col+'"></div></td>'
-      +'<td style="color:'+(a.rsi>70?'var(--r)':a.rsi<30?'var(--g)':'var(--y)')+'">'+a.rsi+'</td>'
-      +'<td><span class="badge '+(a.señal==='COMPRAR'?'buy':a.señal==='VENDER'?'sell':'wait')+'">'+a.señal+'</span></td></tr>';
+      +'<td>'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<span style="font-size:18px;line-height:1">'+(a.icono||'📊')+'</span>'
+          +'<div>'
+            +'<div style="font-weight:700;font-size:11px">'+a.ticker+'</div>'
+            +'<div style="font-size:8px;color:var(--d);margin-top:1px">'+(a.nombre||'')+'</div>'
+          +'</div>'
+        +'</div>'
+        +posHtml
+      +'</td>'
+      +'<td style="color:var(--bl);font-size:11px">$'+Number(a.precio).toLocaleString()+'</td>'
+      +'<td>'
+        +'<span style="color:'+col+';font-size:10px">'+arrow+' '+str+'</span>'
+        +'<div class="bar" style="width:'+bar+'px;background:'+col+'"></div>'
+      +'</td>'
+      +'<td style="color:'+(a.rsi>70?'var(--r)':a.rsi<30?'var(--g)':'var(--y)')+';font-size:11px">'+a.rsi+'</td>'
+      +'<td>'
+        +'<span style="font-size:12px">'+señalIcon+'</span> '
+        +'<span class="badge '+(a.señal==='COMPRAR'?'buy':a.señal==='VENDER'?'sell':'wait')+'">'+a.señal+'</span>'
+      +'</td>'
+      +'</tr>';
   }).join('');
 }
 async function update(){
@@ -356,7 +385,13 @@ async function update(){
     const ob=document.getElementById('ops-body'),no=document.getElementById('no-ops');
     if(d.operaciones&&d.operaciones.length>0){
       no.style.display='none';
-      ob.innerHTML=d.operaciones.map(o=>'<tr><td style="color:var(--d)">'+o.time+'</td><td><span class="badge '+(o.tipo==='COMPRA'?'buy':'sell')+'">'+o.tipo+'</span></td><td><b>'+o.ticker+'</b></td><td style="color:var(--bl)">$'+Number(o.precio).toLocaleString()+'</td><td style="color:var(--g)">$'+o.total+'</td></tr>').join('');
+      ob.innerHTML=d.operaciones.map(o=>'<tr>'
+        +'<td style="color:var(--d)">'+o.time+'</td>'
+        +'<td><span class="badge '+(o.tipo==='COMPRA'?'buy':'sell')+'">'+o.tipo+'</span></td>'
+        +'<td style="font-weight:700">'+o.ticker+'</td>'
+        +'<td style="color:var(--bl)">$'+Number(o.precio).toLocaleString()+'</td>'
+        +'<td style="color:var(--g)">$'+o.total+'</td>'
+        +'</tr>').join('');
     }else{no.style.display='block';}
     document.getElementById('log').innerHTML=d.log.map(e=>'<div class="le"><span class="lt">'+e.time+'</span><span class="l'+e.tipo+'">'+e.msg+'</span></div>').join('');
   }catch(e){console.error(e);}
@@ -377,7 +412,10 @@ def api_estado():
     return jsonify(estado)
 
 def run_bot():
-    log("info", f"Bot iniciado — {len(ACTIVOS)} activos | ${CAPITAL_POR_OPERACION}/op")
+    print("\n" + "="*75, flush=True)
+    print(f"  TRADING BOT — {len(ACTIVOS)} activos | ${CAPITAL_POR_OPERACION}/op | SL:{STOP_LOSS*100}% TP:{TAKE_PROFIT*100}%", flush=True)
+    print("="*75, flush=True)
+
     try:
         orders = alpaca_get("orders?status=filled&limit=20")
         for o in orders:
@@ -403,30 +441,50 @@ def run_bot():
             cash   = float(cuenta.get("cash", 0))
             pnl    = round(equity - 100000, 2)
             estado.update({"capital": equity, "cash": cash, "pnl": pnl, "ultimo_update": ts()})
-            log("info", f"CICLO #{ciclo} | ${equity:,.2f} | P&L:{'+' if pnl>=0 else ''}${pnl:,.2f}")
 
             clock = alpaca_get("clock")
             estado["mercado_abierto"] = clock.get("is_open", False)
+            mercado_str = "ABIERTO" if estado["mercado_abierto"] else "CERRADO"
+
+            print(f"\n{'='*75}", flush=True)
+            print(f"  CICLO #{ciclo} — {ts()} | Capital: ${equity:,.2f} | P&L: {'+' if pnl>=0 else ''}${pnl:,.2f} | Mercado: {mercado_str}", flush=True)
+            print(f"  {'─'*72}", flush=True)
+            print(f"  {'':3} {'NOMBRE':<22} {'TICKER':<8} {'PRECIO':>11} | {'EMA9vsEMA21':>12} | {'RSI':>5} | SEÑAL    POSICION", flush=True)
+            print(f"  {'─'*72}", flush=True)
 
             señales = []
             for ticker in ACTIVOS:
                 datos = analizar(ticker)
                 if datos is None:
+                    print(f"  ❌ {ticker:<8} sin datos", flush=True)
                     continue
+
                 estado["activos"][ticker] = datos
                 pos          = get_position(ACTIVOS[ticker].replace("/", ""))
                 señal        = datos["señal"]
+                diff         = datos["diff_pct"]
                 es_crypto    = "-USD" in ticker
                 puede_operar = es_crypto or estado["mercado_abierto"]
 
                 if pos:
+                    pl_val = round(float(pos.get("unrealized_pl", 0)), 2)
                     estado["activos"][ticker].update({
                         "en_posicion": True,
-                        "pos_pl":  round(float(pos.get("unrealized_pl", 0)), 2),
+                        "pos_pl":  pl_val,
                         "pos_qty": pos.get("qty", "0")
                     })
+                    pos_str = f"[POS P&L:{'+' if pl_val>=0 else ''}${pl_val}]"
                 else:
                     estado["activos"][ticker].update({"en_posicion": False, "pos_pl": 0, "pos_qty": "0"})
+                    pos_str = "[SIN POSICION]"
+
+                info      = ACTIVOS_INFO.get(ticker, ("📊", ticker))
+                icono     = info[0]
+                nombre    = info[1]
+                diff_str  = f"{'+' if diff>=0 else ''}{diff:>7}%"
+                señal_ico = "🟢" if señal == "COMPRAR" else "🔴" if señal == "VENDER" else "⚪"
+
+                print(f"  {icono} {nombre:<22} {ticker:<8} ${datos['precio']:>10,.2f} | {diff_str:>12} | {datos['rsi']:>5} | {señal_ico}{señal:<7} {pos_str}", flush=True)
 
                 if señal == "COMPRAR" and pos is None and puede_operar:
                     comprar(datos)
@@ -445,12 +503,27 @@ def run_bot():
                             log("error", f"Error venta {ticker}: {str(e)[:60]}")
 
             estado["señales"] = señales
+            print(f"\n  Esperando {INTERVALO}s...", flush=True)
+
         except Exception as e:
             log("error", f"Error general: {str(e)[:80]}")
 
         time.sleep(INTERVALO)
 
+def keep_alive():
+    import urllib.request
+    url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    while True:
+        time.sleep(600)
+        try:
+            if url:
+                urllib.request.urlopen(url + "/api/estado")
+                print("Keep-alive ping OK", flush=True)
+        except:
+            pass
+
 threading.Thread(target=run_bot, daemon=True).start()
+threading.Thread(target=keep_alive, daemon=True).start()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
