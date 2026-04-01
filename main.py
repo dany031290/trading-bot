@@ -96,16 +96,20 @@ def alpaca_post(path, data):
 
 def get_bars(ticker, limit=60):
     try:
+        from datetime import datetime, timedelta
         POLYGON_KEY = os.environ.get("POLYGON_KEY", "")
         es_crypto = "-USD" in ticker
 
         if es_crypto:
-            # Crypto: BTC-USD → X:BTCUSD
             sym = "X:" + ticker.replace("-", "")
         else:
             sym = ticker
 
-        url = f"https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/minute"
+        # Polygon requiere fecha inicio y fin
+        hoy  = datetime.utcnow().strftime("%Y-%m-%d")
+        ayer = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+
+        url = f"https://api.polygon.io/v2/aggs/ticker/{sym}/range/1/minute/{ayer}/{hoy}"
         params = {
             "adjusted": "true",
             "sort": "asc",
